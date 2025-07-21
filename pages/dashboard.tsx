@@ -85,13 +85,13 @@ const Dashboard = () => {
           });
           
           if (shouldExpand) {
-            console.log('🔄 EXECUTING: Expand');
+            console.log('EXECUTING: Expand');
             return true; // Set to expanded
           } else if (shouldCollapse) {
-            console.log('🔄 EXECUTING: Collapse');
+            console.log('EXECUTING: Collapse');
             return false; // Set to collapsed
           } else {
-            console.log('❌ NO ACTION: Gesture too small');
+            console.log('NO ACTION: Gesture too small');
             return currentExpanded; // Keep current state
           }
         });
@@ -182,12 +182,12 @@ const Dashboard = () => {
             <Button 
               title="🔍 Search" 
               onPress={() => console.log('Search pressed')}
-              style={styles.primaryButton}
+            //   style={styles.primaryButton}
             />
             <Button 
               title="⚙️ Filter" 
               onPress={() => console.log('Filter pressed')}
-              style={styles.primaryButton}
+            //   style={styles.primaryButton}
             />
           </View>
 
@@ -196,17 +196,17 @@ const Dashboard = () => {
             <Button 
               title="📍 Nearby" 
               onPress={() => console.log('Nearby pressed')}
-              style={styles.secondaryButton}
+            //   style={styles.secondaryButton}
             />
             <Button 
               title="⭐ Popular" 
               onPress={() => console.log('Popular pressed')}
-              style={styles.secondaryButton}
+            //   style={styles.secondaryButton}
             />
             <Button 
               title="💾 Saved" 
               onPress={() => console.log('Saved pressed')}
-              style={styles.secondaryButton}
+            //   style={styles.secondaryButton}
             />
           </View>
 
@@ -214,7 +214,7 @@ const Dashboard = () => {
           {isExpanded && (
             <Animated.View 
               style={styles.expandedContent}
-              entering={{ opacity: 0 }}
+            //   entering={{ opacity: 0 }}
             >
               <View style={styles.row}>
                 <Button 
@@ -229,23 +229,6 @@ const Dashboard = () => {
                 />
               </View>
               
-              <View style={styles.additionalInfo}>
-                <Text style={styles.infoTitle}>Quick Actions</Text>
-                <View style={styles.quickActions}>
-                  <TouchableOpacity style={styles.quickAction}>
-                    <Text style={styles.quickActionText}>🍕 Food</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.quickAction}>
-                    <Text style={styles.quickActionText}>⛽ Gas</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.quickAction}>
-                    <Text style={styles.quickActionText}>🏨 Hotels</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.quickAction}>
-                    <Text style={styles.quickActionText}>🏥 Hospital</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
             </Animated.View>
           )}
         </View>
