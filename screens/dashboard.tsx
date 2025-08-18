@@ -1,153 +1,719 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  PanResponder,
+  Animated,
+  TouchableOpacity,
+  Image,
+  Platform,
+  Alert
+} from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import LottieView from 'lottie-react-native';
+import lockAnimation from '../assets/lockLottie.json'
 
-export default function MapScreen() {
-  const region = {
-    latitude: 12.9692,
-    longitude: 79.1559,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scale = (size: number) => (screenWidth / 375) * size; // Based on iPhone X width
+const verticalScale = (size: number) => (screenHeight / 812) * size; // Based on iPhone X height
+const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
+
+// Lottie JSON variable - replace this with your actual Lottie JSON data
+const lockLottieJson = lockAnimation;
+
+const Dashboard = ({navigation}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [connectionType, setConnectionType] = useState("Connected");
+  const [bagName, setBagName] = useState("Ashish's OFFSTRAP Trail 1.0");
+  const [networkType, setNetworkType] = useState("4G");
+  const [batteryStatus, setBatteryStatus] = useState("100%");
+  const [isLocked, setIsLocked] = useState(true); // Track lock state
+  const [showTrackOverlay, setShowTrackOverlay] = useState(false);
+  
+  const translateY = useRef(new Animated.Value(0)).current;
+  const lastGesture = useRef(0);
+  const lockAnimationRef = useRef(null);
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const overlayScale = useRef(new Animated.Value(0.8)).current;
+
+  // Calculate heights responsively
+  const collapsedHeight = screenHeight * 0.36; // 35%
+  const expandedHeight = screenHeight * 0.58;  // 55%
+
+  // Animation functions
+  const toggleLockAnimation = () => {
+    if (lockAnimationRef.current) {
+      if (isLocked) {
+        // Play forward (unlock)
+        lockAnimationRef.current.play(0, 60);
+        setIsLocked(false);
+      } else {
+        // Play in reverse (lock)
+        lockAnimationRef.current.play(60, 0); // Reset to start
+        setIsLocked(true);
+      }
+    }
   };
+
+  // Track button functionality
+  const handleTrackPress = () => {
+    setShowTrackOverlay(true);
+    
+    // Animate overlay in
+    Animated.parallel([
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(overlayScale, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+    ]).start();
+
+    // Auto fade out after 4 seconds
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.spring(overlayScale, {
+          toValue: 0.8,
+          duration: 500,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+      ]).start(() => {
+        setShowTrackOverlay(false);
+      });
+    }, 4000);
+  };
+
+  // Settings crash functionality
+  const handleSettingsPress = () => {
+    Alert.alert(
+      "BLE Disconnected", 
+      "Bluetooth Low Energy connection has been lost. The app will now terminate.",
+      [
+        {
+          text: "OK",
+          onPress: () => {
+            // Simulate app crash by throwing an error
+            setTimeout(() => {
+              throw new Error("BLE Disconnected - App terminated");
+            }, 100);
+          }
+        }
+      ]
+    );
+  };
+
+  useEffect(() => {
+    // Any initialization logic for animations can go here
+  }, []);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return Math.abs(gestureState.dy) > 10;
+      },
+      onPanResponderGrant: (evt, gestureState) => {
+        lastGesture.current = 0;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        lastGesture.current = gestureState.dy;
+        let newValue = gestureState.dy;
+        if (newValue > 150) newValue = 150;
+        if (newValue < -150) newValue = -150;
+        translateY.setValue(newValue);
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        const { dy, vy } = gestureState;
+
+        setIsExpanded(currentExpanded => {
+          const draggedUp = dy < -30;
+          const swipedUp = vy < -0.2;
+          const draggedDown = dy > 30;
+          const swipedDown = vy > 0.2;
+
+          const shouldExpand = !currentExpanded && (draggedUp || swipedUp);
+          const shouldCollapse = currentExpanded && (draggedDown || swipedDown);
+
+          if (shouldExpand) {
+            return true;
+          } else if (shouldCollapse) {
+            return false;
+          } else {
+            return currentExpanded;
+          }
+        });
+
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: false,
+          tension: 100,
+          friction: 8,
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: false,
+        }).start();
+      },
+    })
+  ).current;
+
+  const animatedHeight = translateY.interpolate({
+    inputRange: [-200, 0, 200],
+    outputRange: [
+      isExpanded ? expandedHeight + 50 : collapsedHeight + 50,
+      isExpanded ? expandedHeight : collapsedHeight,
+      isExpanded ? expandedHeight - 50 : collapsedHeight - 50,
+    ],
+    extrapolate: 'clamp',
+  });
+
+  const [bagLocation] = useState({
+    latitude: 37.78825,
+    longitude: -122.4324,
+  });
+
+  const [mapRegion] = useState({
+    latitude: 37.78825,
+    longitude: -122.4324,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
+
+  const customMapStyle = [
+    {
+      "featureType": "poi",
+      "elementType": "labels",
+      "stylers": [{ "visibility": "off" }]
+    }
+  ];
 
   return (
     <View style={styles.container}>
-      <MapView style={StyleSheet.absoluteFillObject} initialRegion={region}>
-        <Marker coordinate={region} title="VIT" description="Vellore Institute of Technology" />
+      {/* Map Background */}
+      <MapView
+        style={styles.map}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+        initialRegion={mapRegion}
+        customMapStyle={customMapStyle}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+        showsCompass={true}
+        showsScale={true}
+        pitchEnabled={true}
+        rotateEnabled={true}
+        zoomEnabled={true}
+        scrollEnabled={true}
+      >
+        {/* Bag Location Marker */}
+        <Marker
+          coordinate={bagLocation}
+          title={bagName}
+          description={`${connectionType} Connected`}
+          pinColor="#ff6b35"
+        >
+          <View style={styles.customMarker}>
+            <Image
+              source={require("../assets/bagicon.png")}
+              style={styles.markerIcon}
+            />
+          </View>
+        </Marker>
       </MapView>
 
-      {/* Floating bottom panel */}
-      <View style={styles.bottomCard}>
-        <View style={styles.profileRow}>
-          <Image
-            source={require('./assets/backpack.png')} // Replace with your own image
-            style={styles.avatar}
-          />
-          <View style={styles.info}>
-            <Text style={styles.name}>a's OFFSTRAP Trail 1.0</Text>
-            <View style={styles.batteryRow}>
-              <Image
-                source={require('./assets/battery.png')} // Replace with green battery icon
-                style={styles.batteryIcon}
-              />
-              <Text style={styles.batteryText}>100%</Text>
+      {/* Track Overlay */}
+      {showTrackOverlay && (
+        <Animated.View 
+          style={[
+            styles.trackOverlay,
+            {
+              opacity: overlayOpacity,
+              transform: [{ scale: overlayScale }]
+            }
+          ]}
+        >
+          <View style={styles.overlayContent}>
+            <View style={styles.bleIndicator}>
+              <View style={styles.bleIcon} />
+              <Text style={styles.overlayTitle}>BLE Connected</Text>
+            </View>
+            <Text style={styles.overlayMessage}>
+              Bag within 5m radius
+            </Text>
+            <View style={styles.radiusIndicator}>
+              <View style={styles.radiusRing1} />
+              <View style={styles.radiusRing2} />
+              <View style={styles.radiusCenter} />
             </View>
           </View>
-        </View>
+        </Animated.View>
+      )}
 
-        <View style={styles.statusRow}>
-          <View style={styles.statusBox}>
-            <Image
-              source={require('./assets/signal.png')} // 4G signal icon
-              style={styles.statusIcon}
-            />
-            <Text style={styles.statusText}>Network{'\n'}4G</Text>
-          </View>
-          <View style={styles.statusBox}>
-            <Image
-              source={require('./assets/bluetooth.png')}
-              style={styles.statusIcon}
-            />
-            <Text style={styles.statusText}>Bluetooth{'\n'}Connected</Text>
-          </View>
-        </View>
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionBox}>
-            <Image source={require('./assets/lock.png')} style={styles.actionIcon} />
-            <Text style={styles.actionText}>Locked</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBox}>
-            <Image source={require('./assets/track.png')} style={styles.actionIcon} />
-            <Text style={styles.actionText}>Track</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBox}>
-            <Image source={require('./assets/shield.png')} style={styles.actionIcon} />
-            <Text style={styles.actionText}>Safety</Text>
-          </TouchableOpacity>
-        </View>
+      {/* Map Overlay Controls */}
+      <View style={styles.mapControls}>
+        <TouchableOpacity style={styles.mapControlButton}>
+          {/* <Text style={styles.controlButtonText}>📍</Text> */}
+          <Image style={styles.mapButtonIcon} source={require("../assets/mapCenter.png")}></Image>
+        </TouchableOpacity>
       </View>
+
+      {/* Pullable Tab */}
+      <Animated.View
+        style={[styles.tabContainer, { height: animatedHeight }]}
+        {...panResponder.panHandlers}
+      >
+        {/* Pull Indicator */}
+        <View style={styles.pullIndicatorContainer}>
+          <View style={styles.pullIndicator} />
+        </View>
+
+        {/* Tab Content */}
+        <View style={styles.tabContent}>
+          <TouchableOpacity style={styles.bagInfoCard} onPress={() => { }}>
+            <View style={styles.bagIconContainer}>
+
+              <View style={styles.bagIconHolder}>
+                <Image source={require("../assets/bagorange.png")} style={styles.bagIcon} />
+              </View>
+            </View>
+            <View style={styles.bagInfoTextContainer}>
+              <Text style={styles.bagInfoCenterTitle}>{bagName}</Text>
+
+              <View style={[styles.row, { alignItems: "center", height: 20, justifyContent: "flex-start" }]}>
+                <Image source={require("../assets/battery.png")} style={styles.batIcon} />
+                <Text style={styles.bagConnectionText}>{batteryStatus}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={[styles.button, styles.primaryButton, styles.primaryButtonLeft]}
+              onPress={() => { }}
+            >
+              <View style={styles.primaryButtonContent}>
+                <Image source={require("../assets/network.png")} style={styles.primaryButtonIcon} />
+                <View style={styles.primaryButtonTextContainer}>
+                  <Text style={styles.buttonText}>Network</Text>
+                  <Text style={styles.buttonText}>{networkType}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.primaryButton, styles.primaryButtonRight]}
+              onPress={() => { }}
+            >
+              <View style={styles.primaryButtonContent}>
+                <Image source={require("../assets/bluetooth.png")} style={styles.primaryButtonIcon} />
+                <View style={styles.primaryButtonTextContainer}>
+                  <Text style={styles.buttonText}>Bluetooth</Text>
+                  <Text style={styles.buttonText}>{connectionType}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Secondary buttons row */}
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton, styles.secondaryButtonLeft]}
+              onPress={() => {
+                toggleLockAnimation(); // Toggle animation on press
+              }}
+            >
+              {/* Replaced Image with LottieView */}
+              <LottieView
+                ref={lockAnimationRef}
+                source={lockLottieJson}
+                style={styles.secondaryButtonIcon}
+                autoPlay={false}
+                loop={false}
+                colorFilters={[
+                  {
+                    keypath: "*", // Apply to all elements
+                    color: "#ffffff" // White color to match your theme
+                  }
+                ]}
+              />
+              <Text style={styles.secondaryButtonText}>
+                {isLocked ? "Unlock" : "Lock"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton]}
+              onPress={handleTrackPress}
+            >
+              <Image source={require("../assets/location.png")} style={styles.secondaryButtonIcon} />
+              <Text style={styles.secondaryButtonText}>Track</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton, styles.secondaryButtonRight]}
+              onPress={() => { }}
+            >
+              <Image source={require("../assets/alarm.png")} style={styles.secondaryButtonIcon} />
+              <Text style={styles.secondaryButtonText}>Alarm</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Expanded content */}
+          {isExpanded && (
+            <Animated.View style={styles.expandedContent}>
+              <View>
+                <TouchableOpacity
+                  style={[styles.button, styles.tertiaryButton]}
+                  onPress={() => {navigation.navigate("BagHub")}}
+                >
+                  <View style={[styles.row, { alignItems: "center", justifyContent: "center" }]}>
+                    <Image source={require("../assets/bagHub.png")} style={styles.secondaryButtonIcon} />
+
+                    <Text style={[styles.buttonText, { fontSize: 18, paddingLeft: 10 }]}>Bag Hub</Text>
+
+                  </View>
+
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.tertiaryButton]}
+                  onPress={handleSettingsPress}
+                  
+                >
+                  <View style={[styles.row, { alignItems: "center", justifyContent: "center" }]}>
+                    <Image source={require("../assets/settings.png")} style={styles.secondaryButtonIcon} />
+
+                    <Text style={[styles.buttonText, { fontSize: 18, paddingLeft: 10 }]}>Settings</Text>
+
+                  </View>
+
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
+        </View>
+      </Animated.View>
     </View>
   );
-}
-
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f0f0f0',
   },
-  bottomCard: {
+  map: {
+    flex: 1,
+  },
+  customMarker: {
+    backgroundColor: 'white',
+    padding: moderateScale(8),
+    borderRadius: moderateScale(25),
+    borderWidth: 2,
+    borderColor: '#ff6b35',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  markerIcon: {
+    width: moderateScale(30),
+    height: moderateScale(30),
+    resizeMode: 'contain',
+  },
+  mapControls: {
+    position: 'absolute',
+    top: verticalScale(430),
+    right: scale(16),
+    flexDirection: 'column',
+  },
+  mapButtonIcon: {
+    height: verticalScale(25),
+    width: scale(25),
+    filter: "invert(100%)"
+  },
+  mapControlButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    padding: moderateScale(12),
+    borderRadius: moderateScale(12),
+    marginBottom: verticalScale(8),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  controlButtonText: {
+    fontSize: moderateScale(16),
+  },
+  // Track Overlay Styles
+  trackOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  overlayContent: {
+    backgroundColor: '#1a1919',
+    borderRadius: moderateScale(20),
+    padding: moderateScale(30),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  bleIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: moderateScale(15),
+  },
+  bleIcon: {
+    width: moderateScale(12),
+    height: moderateScale(12),
+    borderRadius: moderateScale(6),
+    backgroundColor: '#4CAF50',
+    marginRight: moderateScale(10),
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  overlayTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  overlayMessage: {
+    fontSize: moderateScale(16),
+    color: 'white',
+    textAlign: 'center',
+    marginBottom: moderateScale(20),
+  },
+  radiusIndicator: {
+    width: moderateScale(80),
+    height: moderateScale(80),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radiusRing1: {
+    position: 'absolute',
+    width: moderateScale(80),
+    height: moderateScale(80),
+    borderRadius: moderateScale(40),
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    opacity: 0.3,
+  },
+  radiusRing2: {
+    position: 'absolute',
+    width: moderateScale(60),
+    height: moderateScale(60),
+    borderRadius: moderateScale(30),
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    opacity: 0.6,
+  },
+  radiusCenter: {
+    width: moderateScale(12),
+    height: moderateScale(12),
+    borderRadius: moderateScale(6),
+    backgroundColor: '#4CAF50',
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tabContainer: {
     position: 'absolute',
     bottom: 0,
-    width: '100%',
-    backgroundColor: '#000',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 15,
+    left: 0,
+    right: 0,
+    backgroundColor: '#0e0e0eff',
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
+
+    elevation: 8,
   },
-  profileRow: {
-    flexDirection: 'row',
+  pullIndicatorContainer: {
     alignItems: 'center',
+    paddingTop: verticalScale(10),
+    paddingBottom: verticalScale(12),
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  pullIndicator: {
+    width: scale(40),
+    height: verticalScale(4),
+    backgroundColor: '#ddd',
+    borderRadius: moderateScale(2),
   },
-  info: {
-    marginLeft: 10,
+  tabContent: {
+    flex: 1,
+    paddingHorizontal: scale(15),
+    paddingBottom: 0,
   },
-  name: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  batteryRow: {
+  row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(10),
+    marginTop: verticalScale(2),
   },
-  batteryIcon: {
-    width: 24,
-    height: 12,
-    marginRight: 5,
+  button: {
+    backgroundColor: '#1a1919ff',
+    justifyContent: 'center',
+    // elevation: 3,
   },
-  batteryText: {
-    color: '#fff',
+  primaryButton: {
+    width: "47.5%",
+    height: verticalScale(70),
+    // paddingVertical: verticalScale(10),
+    // paddingHorizontal: scale(16),
+    justifyContent: "center",
+    alignItems: "center"
   },
-  statusRow: {
+  primaryButtonLeft: {
+    borderTopLeftRadius: moderateScale(12),
+    borderBottomLeftRadius: moderateScale(12),
+  },
+  primaryButtonRight: {
+    borderTopRightRadius: moderateScale(12),
+    borderBottomRightRadius: moderateScale(12),
+  },
+  primaryButtonContent: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 20,
+    justifyContent: 'flex-start',
+    paddingVertical: verticalScale(20),
   },
-  statusBox: {
+  primaryButtonIcon: {
+    marginTop: verticalScale(6),
+    height: moderateScale(35),
+    width: moderateScale(35),
+  },
+  primaryButtonTextContainer: {
+    paddingLeft: scale(10),
+    paddingVertical: verticalScale(2),
+  },
+  secondaryButton: {
+    width: "31%",
+    height: verticalScale(85),
     alignItems: 'center',
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(16),
+    borderRadius: 12,
   },
-  statusIcon: {
-    width: 24,
-    height: 24,
-    tintColor: '#0f0',
+  secondaryButtonLeft: {
+    borderTopLeftRadius: moderateScale(12),
+    borderBottomLeftRadius: moderateScale(12),
   },
-  statusText: {
-    color: '#fff',
-    textAlign: 'center',
-    fontSize: 12,
+  secondaryButtonRight: {
+    borderTopRightRadius: moderateScale(12),
+    borderBottomRightRadius: moderateScale(12),
+  },
+  secondaryButtonIcon: {
+    height: moderateScale(30),
+    width: moderateScale(30),
+    alignSelf: "center",
+  },
+  buttonText: {
+    color: 'white',
+    // fontWeight: '600',
+    fontSize: moderateScale(15),
+  },
+  secondaryButtonText: {
+    color: 'white',
+    // fontWeight: '600',
+    fontSize: moderateScale(15),
+    textAlign: "center",
+    paddingTop: 5
+  },
+  expandedContent: {
+    marginTop: verticalScale(2),
+  },
+  tertiaryButton: {
+    width: "100%",
+    height: 70,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: scale(12)
+
+  },
+  bagInfoCard: {
+    height: verticalScale(80),
+    width: "100%",
+    flexDirection: 'row',
+    backgroundColor: "#ffffffff",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(15),
+    borderRadius: moderateScale(12),
+    alignItems: 'center',
+    marginBottom: verticalScale(10),
+  },
+  bagIconContainer: {
+    height: "auto",
+  },
+  bagIconStatusRing: {
+    borderRadius: moderateScale(100),
+    padding: moderateScale(3),
+  },
+  bagIconHolder: {
+    borderRadius: moderateScale(100),
+    padding: moderateScale(8),
+    backgroundColor: "#abb4c2ff",
+  },
+  bagIcon: {
+    resizeMode: "contain",
+    height: moderateScale(35),
+    width: moderateScale(35),
+  },
+  bagInfoTextContainer: {
+    height: "auto",
+    paddingLeft: scale(10),
+  },
+  bagInfoCenterTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: "500",
+    color: 'black',
+  },
+  bagConnectionText: {
+    fontSize: moderateScale(16),
+    color: 'black',
+    paddingHorizontal: 10,
+  },
+  batIcon: {
+    height: verticalScale(35),
+    width: scale(32),
+    resizeMode: "contain",
     marginTop: 4,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 20,
-  },
-  actionBox: {
-    alignItems: 'center',
-  },
-  actionIcon: {
-    width: 26,
-    height: 26,
-    tintColor: '#fff',
-  },
-  actionText: {
-    color: '#fff',
-    marginTop: 4,
-  },
+
+  }
 });
+
+export default Dashboard;
