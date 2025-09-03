@@ -115,6 +115,7 @@ export default function LoginScreen({ navigation }) {
   const signInWithApple = () => {
     // Apple Sign-In implementation would go here
     Alert.alert('Apple Sign-In', 'Apple Sign-In not implemented yet');
+    navigation.replace("Dashboard");
   };
 
   if (isCheckingAuth) {
@@ -133,7 +134,7 @@ export default function LoginScreen({ navigation }) {
         style={styles.logo}
       />
       
-      <TouchableOpacity 
+      <TouchableOpacity  
         style={[styles.googleBtn, isSigningIn && styles.disabledBtn]} 
         onPress={signInWithGoogle}
         disabled={isSigningIn}

@@ -102,21 +102,23 @@ const Dashboard = ({navigation}) => {
 
   // Settings crash functionality
   const handleSettingsPress = () => {
-    Alert.alert(
-      "BLE Disconnected", 
-      "Bluetooth Low Energy connection has been lost. The app will now terminate.",
-      [
-        {
-          text: "OK",
-          onPress: () => {
-            // Simulate app crash by throwing an error
-            setTimeout(() => {
-              throw new Error("BLE Disconnected - App terminated");
-            }, 100);
-          }
-        }
-      ]
-    );
+    // Alert.alert(
+    //   "BLE Disconnected", 
+    //   "Bluetooth Low Energy connection has been lost. The app will now terminate.",
+    //   [
+    //     {
+    //       text: "OK",
+    //       onPress: () => {
+    //         // Simulate app crash by throwing an error
+    //         setTimeout(() => {
+    //           throw new Error("BLE Disconnected - App terminated");
+    //         }, 100);
+    //       }
+    //     }
+    //   ]
+    // );
+
+
   };
 
   useEffect(() => {
@@ -291,7 +293,7 @@ const Dashboard = ({navigation}) => {
             <View style={styles.bagIconContainer}>
 
               <View style={styles.bagIconHolder}>
-                <Image source={require("../assets/bagorange.png")} style={styles.bagIcon} />
+                <Image source={require("../assets/bag.jpeg")} style={styles.bagIcon} />
               </View>
             </View>
             <View style={styles.bagInfoTextContainer}>
@@ -355,7 +357,8 @@ const Dashboard = ({navigation}) => {
                 ]}
               />
               <Text style={styles.secondaryButtonText}>
-                {isLocked ? "Unlock" : "Lock"}
+                {isLocked ? "Locked" : "Unlocked"} 
+                {/* todo -  5 sec reset to locked stat , based on hw */}
               </Text>
             </TouchableOpacity>
 
@@ -394,7 +397,7 @@ const Dashboard = ({navigation}) => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.button, styles.tertiaryButton]}
-                  onPress={handleSettingsPress}
+                  onPress={()=>{navigation.navigate("Settings")}}
                   
                 >
                   <View style={[styles.row, { alignItems: "center", justifyContent: "center" }]}>

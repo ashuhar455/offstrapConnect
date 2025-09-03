@@ -43,24 +43,24 @@ export default function SettingsScreen({navigation}) {
                   </View>
                 </TouchableOpacity> 
       <View style={styles.section}>
-        <SettingItem icon="person-outline" label="Account" onPress={() => {navigation.navigate("Account")}}/>
-        <SettingItem icon="bag-outline" label="Bag Name" />
-        <SettingItem icon="shield-checkmark-outline" label="App Security" onPress={() => {navigation.navigate("Security")}}/>
+        <SettingItem icon={require("../assets/account.png")} label="Account" onPress={() => {navigation.navigate("Account")}}/>
+        <SettingItem icon={require("../assets/bagname.png")} label="Bag Name" onPress={() => {navigation.navigate("Account")}} />
+        <SettingItem icon={require("../assets/appsecurity.png")} label="App Security" onPress={() => {navigation.navigate("Security")}}/>
 
         </View>
 
 
       <View style={styles.section}>
-        <SettingItem icon="bar-chart-outline" label="Usage Chart" onPress={()=> {navigation.navigate("Usage")}} />
+        <SettingItem icon={require("../assets/statistics.png")} label="Usage Chart" onPress={()=> {navigation.navigate("Usage")}} />
 
         <SettingSwitch
-          icon="airplane-outline"
+          icon={require("../assets/travel.png")}
           label="Travel Mode"
           value={travelMode}
           onValueChange={setTravelMode}
         />
         <SettingSwitch
-          icon="alert-circle-outline"
+          icon={require("../assets/lost.png")}
           label="Lost Mode"
           value={lostMode}
           onValueChange={setLostMode}
@@ -70,20 +70,21 @@ export default function SettingsScreen({navigation}) {
 
       <View style={styles.section}>
          
-        <SettingItem icon="tv-outline" label="Smart Display" onPress={()=>{navigation.navigate("SmartDisplay")}}/>
-        <SettingItem icon="notifications-outline" label="Notification" onPress={()=> {navigation.navigate("Notifications")}} />
+        <SettingItem icon={require("../assets/display.png")} label="Smart Display" onPress={()=>{navigation.navigate("SmartDisplay")}}/>
+        <SettingItem icon={require("../assets/notification.png")} label="Notification" onPress={()=> {navigation.navigate("Notifications")}} />
       </View>
       <View style={styles.section}>
         {/* <SettingItem icon="person" label="Fingerprint Manager" /> */}
         <TouchableOpacity style={styles.item} 
           onPress={() => {navigation.navigate("FPEnroll")}}
         >
-      <Icon name="finger-print-outline" size={20} color="white" style={styles.icon} />
+      <Image source={require("../assets/fingerprint.png")} style={styles.icon} />
+      
       <Text style={styles.label}>Fingerprint Manager</Text>
     </TouchableOpacity>
 
-        <SettingItem icon="information-circle-outline" label="About" onPress={()=> {navigation.navigate("About")}}/>
-        <SettingItem icon="log-out-outline" label="Sign out" onPress={() => {handleSignOut(navigation)}} />
+        <SettingItem icon={require("../assets/about.png")} label="About" onPress={()=> {navigation.navigate("About")}}/>
+        <SettingItem icon={require("../assets/logout.png")} label="Logout" onPress={() => {handleSignOut(navigation)}} />
       </View>
 
 
@@ -116,11 +117,10 @@ const handleSignOut = (navigation) => {
   );
 };
 
-
 function SettingItem({ icon, label, onPress }) {
   return (
-    <TouchableOpacity style={styles.item} onPress={onPress} >
-      <Icon name={icon} size={20} color="white" style={styles.icon} />
+    <TouchableOpacity style={styles.item} onPress={onPress}>
+      <Image source={icon} style={styles.icon} />
       <Text style={styles.label}>{label}</Text>
     </TouchableOpacity>
   );
@@ -129,7 +129,7 @@ function SettingItem({ icon, label, onPress }) {
 function SettingSwitch({ label, value, onValueChange, icon }) {
   return (
     <View style={styles.item}>
-      <Icon name={icon} size={20} color="white" style={styles.icon} />
+      <Image source={icon} style={styles.icon} />
       <Text style={styles.label}>{label}</Text>
       <Switch
         value={value}
@@ -229,7 +229,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   icon: {
-    marginRight: 16,
+    marginRight: 10,
+    height: 17,
+    width: 17,
   },
   label: {
     color: 'white',
