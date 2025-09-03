@@ -12,7 +12,7 @@ export default function DiscoveryScreen({ navigation }) {
   const [showBags, setShowBags] = useState(false);
 
   const devices = [
-    { id: '1', name: 'Trail 1.0', code: 'OFS-A1-A014E6CEEDEB', strength: 4 },
+    // { id: '1', name: 'Trail 1.0', code: 'OFS-A1-A014E6CEEDEB', strength: 4 },
   ];
 
   const handleScan = () => {
