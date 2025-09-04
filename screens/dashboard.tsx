@@ -9,10 +9,12 @@ import {
   TouchableOpacity,
   Image,
   Platform,
-  Alert
+  Alert,
+  PermissionsAndroid
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import LottieView from 'lottie-react-native';
+import { BleManager, Device, State } from 'react-native-ble-plx';
 import lockAnimation from '../assets/lockLottie.json'
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
@@ -27,12 +29,18 @@ const lockLottieJson = lockAnimation;
 
 const Dashboard = ({navigation}) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [connectionType, setConnectionType] = useState("Connected");
+  const [connectionType, setConnectionType] = useState("Disconnected");
   const [bagName, setBagName] = useState("Ashish's OFFSTRAP Trail 1.0");
   const [networkType, setNetworkType] = useState("4G");
   const [batteryStatus, setBatteryStatus] = useState("100%");
   const [isLocked, setIsLocked] = useState(true); // Track lock state
   const [showTrackOverlay, setShowTrackOverlay] = useState(false);
+  
+  // BLE States
+  const [bleManager] = useState(new BleManager());
+  const [connectedDevice, setConnectedDevice] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [bleState, setBleState] = useState(State.Unknown);
   
   const translateY = useRef(new Animated.Value(0)).current;
   const lastGesture = useRef(0);
@@ -44,23 +52,300 @@ const Dashboard = ({navigation}) => {
   const collapsedHeight = screenHeight * 0.36; // 35%
   const expandedHeight = screenHeight * 0.58;  // 55%
 
+  // BLE Functions
+  const requestPermissions = async () => {
+    if (Platform.OS === 'android') {
+      const permissions = [];
+      
+      if (Platform.Version >= 31) {
+        permissions.push(
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        );
+      } else {
+        permissions.push(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN
+        );
+      }
+
+      const granted = await PermissionsAndroid.requestMultiple(permissions);
+      
+      const allPermissionsGranted = permissions.every(
+        permission => granted[permission] === PermissionsAndroid.RESULTS.GRANTED
+      );
+      
+      return allPermissionsGranted;
+    }
+    return true;
+  };
+
+  const checkBluetoothState = async () => {
+    const state = await bleManager.state();
+    setBleState(state);
+    
+    if (state === State.PoweredOff) {
+      Alert.alert(
+        'Bluetooth is Off',
+        'Please turn on Bluetooth to connect to your bag.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Refresh',
+            onPress: () => checkBluetoothState(),
+          },
+        ]
+      );
+      return false;
+    } else if (state === State.PoweredOn) {
+      return true;
+    }
+    return false;
+  };
+
+  const scanForDevices = async () => {
+    const hasPermissions = await requestPermissions();
+    if (!hasPermissions) {
+      Alert.alert('Permissions Required', 'Bluetooth permissions are required to connect to your bag.');
+      return;
+    }
+
+    const bluetoothReady = await checkBluetoothState();
+    if (!bluetoothReady) return;
+
+    setIsScanning(true);
+    setConnectionType("Scanning...");
+
+    bleManager.startDeviceScan(null, null, (error, device) => {
+      if (error) {
+        console.log('Scan error:', error);
+        setIsScanning(false);
+        setConnectionType("Scan Error");
+        return;
+      }
+
+      if (device && device.name && device.name.includes('OFS-A1-')) {
+        console.log('Found target device:', device.name);
+        bleManager.stopDeviceScan();
+        setIsScanning(false);
+        connectToDevice(device);
+      }
+    });
+
+    // Stop scanning after 30 seconds if no device found
+    setTimeout(() => {
+      if (isScanning) {
+        bleManager.stopDeviceScan();
+        setIsScanning(false);
+        if (!connectedDevice) {
+          setConnectionType("Device Not Found");
+          Alert.alert(
+            'Device Not Found',
+            'Could not find a device with OFS-A1- in its name. Make sure your bag is powered on and nearby.',
+            [
+              {
+                text: 'Retry',
+                onPress: () => scanForDevices(),
+              },
+              {
+                text: 'Cancel',
+                style: 'cancel',
+              },
+            ]
+          );
+        }
+      }
+    }, 30000);
+  };
+
+  const connectToDevice = async (device) => {
+    try {
+      setConnectionType("Connecting...");
+      
+      const connectedDevice = await device.connect();
+      setConnectedDevice(connectedDevice);
+      setConnectionType("Connected");
+      
+      console.log('Connected to device:', connectedDevice.name);
+
+      // Discover services and characteristics
+      await connectedDevice.discoverAllServicesAndCharacteristics();
+      
+      // Setup disconnect listener
+      connectedDevice.onDisconnected((error, disconnectedDevice) => {
+        console.log('Device disconnected:', disconnectedDevice.name);
+        setConnectedDevice(null);
+        setConnectionType("Disconnected");
+        
+        if (error) {
+          console.log('Disconnect error:', error);
+          Alert.alert(
+            'Connection Lost',
+            'Connection to your bag was lost unexpectedly.',
+            [
+              {
+                text: 'Reconnect',
+                onPress: () => scanForDevices(),
+              },
+              {
+                text: 'OK',
+                style: 'cancel',
+              },
+            ]
+          );
+        }
+      });
+
+      // Setup notification listener (you'll need to replace with your actual service/characteristic UUIDs)
+      setupNotifications(connectedDevice);
+
+    } catch (error) {
+      console.log('Connection error:', error);
+      setConnectionType("Connection Failed");
+      Alert.alert(
+        'Connection Failed',
+        'Failed to connect to the device. Please try again.',
+        [
+          {
+            text: 'Retry',
+            onPress: () => connectToDevice(device),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+    }
+  };
+
+  const setupNotifications = async (device) => {
+    try {
+      // Replace these UUIDs with your actual service and characteristic UUIDs
+      const SERVICE_UUID = 'your-service-uuid-here';
+      const CHARACTERISTIC_UUID = 'your-characteristic-uuid-here';
+      
+      // Monitor for notifications/indications
+      device.monitorCharacteristicForService(
+        SERVICE_UUID,
+        CHARACTERISTIC_UUID,
+        (error, characteristic) => {
+          if (error) {
+            console.log('Monitor error:', error);
+            return;
+          }
+          
+          if (characteristic && characteristic.value) {
+            // Decode the received data
+            const receivedData = Buffer.from(characteristic.value, 'base64').toString('utf-8');
+            console.log('Received data:', receivedData);
+            
+            // Handle received data
+            handleBleDataReceived(receivedData);
+          }
+        }
+      );
+    } catch (error) {
+      console.log('Setup notifications error:', error);
+    }
+  };
+
+  const handleBleDataReceived = (data) => {
+    console.log('BLE Data received:', data);
+    
+    // Handle different types of received data
+    switch (data.toLowerCase()) {
+      case 'battery_low':
+        setBatteryStatus('Low');
+        Alert.alert('Low Battery', 'Your bag battery is running low.');
+        break;
+      case 'unlocked':
+        setIsLocked(false);
+        break;
+      case 'locked':
+        setIsLocked(true);
+        break;
+      case 'track_response':
+        // Handle track response
+        console.log('Track command acknowledged');
+        break;
+      default:
+        // Handle other data types
+        console.log('Unknown data received:', data);
+    }
+  };
+
+  const sendBleCommand = async (command) => {
+    if (!connectedDevice) {
+      Alert.alert('Not Connected', 'Please connect to your bag first.');
+      return;
+    }
+
+    try {
+      // Replace these UUIDs with your actual service and characteristic UUIDs
+      const SERVICE_UUID = 'your-service-uuid-here';
+      const CHARACTERISTIC_UUID = 'your-write-characteristic-uuid-here';
+      
+      // Convert command to base64
+      const commandBuffer = Buffer.from(command, 'utf-8');
+      const commandBase64 = commandBuffer.toString('base64');
+      
+      await connectedDevice.writeCharacteristicWithResponseForService(
+        SERVICE_UUID,
+        CHARACTERISTIC_UUID,
+        commandBase64
+      );
+      
+      console.log('Command sent:', command);
+    } catch (error) {
+      console.log('Send command error:', error);
+      Alert.alert('Command Failed', 'Failed to send command to device.');
+    }
+  };
+
+  const disconnectDevice = async () => {
+    if (connectedDevice) {
+      try {
+        await connectedDevice.cancelConnection();
+        setConnectedDevice(null);
+        setConnectionType("Disconnected");
+      } catch (error) {
+        console.log('Disconnect error:', error);
+      }
+    }
+  };
+
   // Animation functions
-  const toggleLockAnimation = () => {
+  const toggleLockAnimation = async () => {
     if (lockAnimationRef.current) {
       if (isLocked) {
+        // Send unlock command via BLE
+        await sendBleCommand('unlock');
+        
         // Play forward (unlock)
         lockAnimationRef.current.play(0, 60);
-        setIsLocked(false);
+        // Note: Don't set isLocked here, wait for BLE response
       } else {
+        // Send lock command via BLE
+        await sendBleCommand('lock');
+        
         // Play in reverse (lock)
-        lockAnimationRef.current.play(60, 0); // Reset to start
-        setIsLocked(true);
+        lockAnimationRef.current.play(60, 0);
+        // Note: Don't set isLocked here, wait for BLE response
       }
     }
   };
 
   // Track button functionality
-  const handleTrackPress = () => {
+  const handleTrackPress = async () => {
+    // Send track command via BLE
+    await sendBleCommand('track');
+    
     setShowTrackOverlay(true);
     
     // Animate overlay in
@@ -102,27 +387,33 @@ const Dashboard = ({navigation}) => {
 
   // Settings crash functionality
   const handleSettingsPress = () => {
-    // Alert.alert(
-    //   "BLE Disconnected", 
-    //   "Bluetooth Low Energy connection has been lost. The app will now terminate.",
-    //   [
-    //     {
-    //       text: "OK",
-    //       onPress: () => {
-    //         // Simulate app crash by throwing an error
-    //         setTimeout(() => {
-    //           throw new Error("BLE Disconnected - App terminated");
-    //         }, 100);
-    //       }
-    //     }
-    //   ]
-    // );
-
-
+    // Disconnect BLE before navigating
+    disconnectDevice();
   };
 
   useEffect(() => {
-    // Any initialization logic for animations can go here
+    // Initialize BLE when component mounts
+    const initializeBle = async () => {
+      // Monitor Bluetooth state changes
+      const subscription = bleManager.onStateChange((state) => {
+        setBleState(state);
+        if (state === State.PoweredOn) {
+          scanForDevices();
+        }
+      }, true);
+
+      return () => subscription.remove();
+    };
+
+    initializeBle();
+
+    // Cleanup on unmount
+    return () => {
+      if (connectedDevice) {
+        disconnectDevice();
+      }
+      bleManager.destroy();
+    };
   }, []);
 
   const panResponder = useRef(
@@ -229,7 +520,7 @@ const Dashboard = ({navigation}) => {
         <Marker
           coordinate={bagLocation}
           title={bagName}
-          description={`${connectionType} Connected`}
+          description={`${connectionType}`}
           pinColor="#ff6b35"
         >
           <View style={styles.customMarker}>
@@ -254,11 +545,19 @@ const Dashboard = ({navigation}) => {
         >
           <View style={styles.overlayContent}>
             <View style={styles.bleIndicator}>
-              <View style={styles.bleIcon} />
-              <Text style={styles.overlayTitle}>BLE Connected</Text>
+              <View style={[
+                styles.bleIcon, 
+                { backgroundColor: connectedDevice ? '#4CAF50' : '#f44336' }
+              ]} />
+              <Text style={[
+                styles.overlayTitle,
+                { color: connectedDevice ? '#4CAF50' : '#f44336' }
+              ]}>
+                {connectedDevice ? 'BLE Connected' : 'BLE Disconnected'}
+              </Text>
             </View>
             <Text style={styles.overlayMessage}>
-              Bag within 5m radius
+              {connectedDevice ? 'Bag within 5m radius' : 'Searching for bag...'}
             </Text>
             <View style={styles.radiusIndicator}>
               <View style={styles.radiusRing1} />
@@ -272,7 +571,6 @@ const Dashboard = ({navigation}) => {
       {/* Map Overlay Controls */}
       <View style={styles.mapControls}>
         <TouchableOpacity style={styles.mapControlButton}>
-          {/* <Text style={styles.controlButtonText}>📍</Text> */}
           <Image style={styles.mapButtonIcon} source={require("../assets/mapCenter.png")}></Image>
         </TouchableOpacity>
       </View>
@@ -291,7 +589,6 @@ const Dashboard = ({navigation}) => {
         <View style={styles.tabContent}>
           <TouchableOpacity style={styles.bagInfoCard} onPress={() => { }}>
             <View style={styles.bagIconContainer}>
-
               <View style={styles.bagIconHolder}>
                 <Image source={require("../assets/bag.jpeg")} style={styles.bagIcon} />
               </View>
@@ -322,7 +619,7 @@ const Dashboard = ({navigation}) => {
 
             <TouchableOpacity
               style={[styles.button, styles.primaryButton, styles.primaryButtonRight]}
-              onPress={() => { }}
+              onPress={connectedDevice ? disconnectDevice : scanForDevices}
             >
               <View style={styles.primaryButtonContent}>
                 <Image source={require("../assets/bluetooth.png")} style={styles.primaryButtonIcon} />
@@ -339,10 +636,9 @@ const Dashboard = ({navigation}) => {
             <TouchableOpacity
               style={[styles.button, styles.secondaryButton, styles.secondaryButtonLeft]}
               onPress={() => {
-                toggleLockAnimation(); // Toggle animation on press
+                toggleLockAnimation();
               }}
             >
-              {/* Replaced Image with LottieView */}
               <LottieView
                 ref={lockAnimationRef}
                 source={lockLottieJson}
@@ -351,14 +647,13 @@ const Dashboard = ({navigation}) => {
                 loop={false}
                 colorFilters={[
                   {
-                    keypath: "*", // Apply to all elements
-                    color: "#ffffff" // White color to match your theme
+                    keypath: "*",
+                    color: "#ffffff"
                   }
                 ]}
               />
               <Text style={styles.secondaryButtonText}>
                 {isLocked ? "Locked" : "Unlocked"} 
-                {/* todo -  5 sec reset to locked stat , based on hw */}
               </Text>
             </TouchableOpacity>
 
@@ -389,24 +684,18 @@ const Dashboard = ({navigation}) => {
                 >
                   <View style={[styles.row, { alignItems: "center", justifyContent: "center" }]}>
                     <Image source={require("../assets/bagHub.png")} style={styles.secondaryButtonIcon} />
-
                     <Text style={[styles.buttonText, { fontSize: 18, paddingLeft: 10 }]}>Bag Hub</Text>
-
                   </View>
-
                 </TouchableOpacity>
+                
                 <TouchableOpacity
                   style={[styles.button, styles.tertiaryButton]}
                   onPress={()=>{navigation.navigate("Settings")}}
-                  
                 >
                   <View style={[styles.row, { alignItems: "center", justifyContent: "center" }]}>
                     <Image source={require("../assets/settings.png")} style={styles.secondaryButtonIcon} />
-
                     <Text style={[styles.buttonText, { fontSize: 18, paddingLeft: 10 }]}>Settings</Text>
-
                   </View>
-
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -563,7 +852,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0e0e0eff',
     borderTopLeftRadius: moderateScale(20),
     borderTopRightRadius: moderateScale(20),
-
     elevation: 8,
   },
   pullIndicatorContainer: {
@@ -591,13 +879,10 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: '#1a1919ff',
     justifyContent: 'center',
-    // elevation: 3,
   },
   primaryButton: {
     width: "47.5%",
     height: verticalScale(70),
-    // paddingVertical: verticalScale(10),
-    // paddingHorizontal: scale(16),
     justifyContent: "center",
     alignItems: "center"
   },
@@ -646,12 +931,10 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: 'white',
-    // fontWeight: '600',
     fontSize: moderateScale(15),
   },
   secondaryButtonText: {
     color: 'white',
-    // fontWeight: '600',
     fontSize: moderateScale(15),
     textAlign: "center",
     paddingTop: 5
@@ -666,7 +949,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: scale(12)
-
   },
   bagInfoCard: {
     height: verticalScale(80),
@@ -715,7 +997,6 @@ const styles = StyleSheet.create({
     width: scale(32),
     resizeMode: "contain",
     marginTop: 4,
-
   }
 });
 

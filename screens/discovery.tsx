@@ -4,7 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
+  Image, 
   FlatList,
 } from 'react-native';
 
